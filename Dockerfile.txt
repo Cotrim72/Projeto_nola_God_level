@@ -1,0 +1,41 @@
+# === STAGE 1: Build ===
+# Usado para instalar dependências de sistema e compilar pacotes Python
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Instala as dependências de sistema necessárias para compilar psycopg2-binary
+RUN apt-get update \
+    && apt-get install -y \
+    gcc \
+    libpq-dev \
+    # Adicionando 'python3-dev' que pode ser necessário para a compilação
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copia e instala as dependências Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# === STAGE 2: Final (Runtime) ===
+# Imagem menor, apenas com o que é necessário para rodar
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instala SOMENTE as libs de runtime (que não precisam de ferramentas de build)
+# 'libpq5' é a lib cliente do PostgreSQL que o psycopg2 precisa em runtime.
+RUN apt-get update \
+    && apt-get install -y \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copia as libs Python instaladas do stage 'builder'
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copia os scripts da aplicação e do gerador de dados
+COPY app.py .
+COPY generate_data.py .
+
+

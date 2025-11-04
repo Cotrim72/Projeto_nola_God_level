@@ -1,0 +1,33 @@
+#Usa uma imagem Node.js leve para o desenvolvimento React
+
+FROM node:20-alpine
+
+#Define o diretório de trabalho dentro do contêiner
+
+WORKDIR /app/frontend
+
+#Copia os arquivos de configuração do Node.js
+
+COPY package.json .
+
+#Como o App.jsx usa Tailwind CSS, não copiamos um arquivo de CSS separado, mas se você tivesse, ele iria aqui.
+
+#Instala as dependências
+
+RUN npm install
+
+#Copia o código da aplicação (App.jsx)
+
+#Nota: No docker-compose, o código é montado via volume, mas é bom ter o COPY para um build inicial ou para build de produção
+
+COPY . .
+
+#Expõe a porta que o servidor de desenvolvimento do React usa
+
+EXPOSE 3000
+
+#Comando para iniciar o servidor de desenvolvimento do React
+
+#O servidor React será iniciado e ele chamará o backend em http://nola-api:8000
+
+CMD ["npm", "start"]

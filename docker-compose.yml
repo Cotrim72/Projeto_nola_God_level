@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: godlevel-db
+    environment:
+      POSTGRES_DB: challenge_db
+      POSTGRES_USER: challenge
+      POSTGRES_PASSWORD: challenge_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U challenge -d challenge_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  data-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.txt
+    container_name: godlevel-data-gen
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://challenge:challenge_2024@postgres:5432/challenge_db
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 5 &&
+        echo 'Generating challenge data...' &&
+        python generate_data.py --db-url postgresql://challenge:challenge_2024@postgres:5432/challenge_db
+      "
+    profiles:
+      - tools # Mantido no perfil 'tools' para execução única
+
+  api-backend: # Serviço de API Python/FastAPI
+    build:
+      context: .
+      dockerfile: Dockerfile.txt # Reutiliza o Dockerfile, mas usaremos o requirements.txt
+    container_name: nola-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000" # Porta para o host consumir
+    environment:
+      DATABASE_URL: postgresql://challenge:challenge_2024@postgres:5432/challenge_db
+    command: >
+      sh -c "
+        # Garante que o uvicorn use 0.0.0.0 para ser acessível pelo Docker
+        uvicorn app:app --host 0.0.0.0 --port 8000
+      "
+
+  frontend-app: # NOVO SERVIÇO: Aplicação React
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend # Usamos o novo Dockerfile
+    container_name: nola-frontend
+    depends_on:
+      api-backend:
+        condition: service_started # Precisa apenas que a API comece
+    # Mapeia a porta padrão do React para o host
+    ports:
+      - "3000:3000"
+    volumes:
+      # Monta o código local no contêiner para que as alterações sejam instantâneas
+      - .:/app/frontend 
+      # Exclui a pasta node_modules dentro do contêiner para não sobrescrever
+      # o node_modules que foi instalado durante o build.
+      - /app/frontend/node_modules
+    environment:
+      # Variável de ambiente necessária para que o React funcione corretamente no Docker
+      CHOKIDAR_USEPOLLING: "true"
+      # Define a URL base da API para o serviço Docker (nola-api)
+      # Nota: Para desenvolvimento (acessando via localhost:3000), o React ainda tentará
+      # chamar localhost:8000 no navegador. O Docker resolve o nome internamente.
+      REACT_APP_API_URL: http://nola-api:8000
+    # O comando padrão (npm start) é definido no Dockerfile.frontend
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: godlevel-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@godlevel.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+    driver: local

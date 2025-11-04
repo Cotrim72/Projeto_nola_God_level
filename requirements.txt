@@ -1,0 +1,11 @@
+#Dependências do Banco de Dados
+psycopg2-binary==2.9.9
+
+# Dependências do Gerador de Dados
+Faker==20.1.0
+
+# Dependências da API (FastAPI)
+fastapi
+uvicorn[standard]
+python-multipart
+
